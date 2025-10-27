@@ -10,7 +10,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import {detectAndFetchRemoteScripts} from '../tools/detect-and-fetch-remote-scripts';
-import {runInNewSpan} from '@genkit-ai/core/instrumentation';
+import { runInNewSpan } from '@genkit-ai/core/instrumentation';
 
 const AssessRiskAndProvideReportInputSchema = z.object({
   scriptContent: z.string().describe('The content of the shell script to be analyzed.'),
