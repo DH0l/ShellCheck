@@ -24,6 +24,7 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
   },
   async ({ scriptContent }) => {
     // Regular expression to find curl/wget commands that pipe to a shell.
+    // This is more comprehensive and covers more cases.
     const urlRegex = /(?:curl\s+-?L?s?f?S?|wget\s+-?q?O?-)\s+(['"]?)(https?:\/\/[^\s'"]+)\1\s*\|\s*(?:bash|sh)/g;
 
     const urls: string[] = [];
