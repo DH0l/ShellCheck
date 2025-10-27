@@ -71,14 +71,14 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
     }
 
     const llmResponse = await assessRiskAndProvideReportPrompt(input);
-    const toolCalls = llmResponse.toolCalls();
+    const toolRequests = llmResponse.toolRequests;
 
-    if (toolCalls.length === 0) {
-      return llmResponse.output()!;
+    if (toolRequests.length === 0) {
+      return llmResponse.output!;
     }
 
     const toolOutputs = await Promise.all(
-      toolCalls.map(async call => {
+      toolRequests.map(async call => {
         const toolOutput = await call.run();
         // We need to provide the output back to the LLM.
         return call.output(toolOutput);
@@ -126,6 +126,6 @@ ${subScriptReports.join('\n\n')}`,
     };
 
     const finalResponse = await assessRiskAndProvideReportPrompt(finalInput);
-    return finalResponse.output()!;
+    return finalResponse.output!;
   }
 );
