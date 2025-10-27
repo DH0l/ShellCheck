@@ -10,7 +10,6 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import {detectAndFetchRemoteScripts} from '../tools/detect-and-fetch-remote-scripts';
-import { runInNewSpan } from '@genkit-ai/core/instrumentation';
 
 const AssessRiskAndProvideReportInputSchema = z.object({
   scriptContent: z.string().describe('The content of the shell script to be analyzed.'),
@@ -74,60 +73,56 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
     outputSchema: AssessRiskAndProvideReportOutputSchema,
   },
   async input => {
-    return await runInNewSpan('assess-risk-flow', async (span) => {
-      const recursionLevel = input._recursionLevel ?? 0;
-      span.setAttribute('recursion.level', recursionLevel);
+    const recursionLevel = input._recursionLevel ?? 0;
 
-      if (recursionLevel > MAX_RECURSION_DEPTH) {
-        return {
-          riskScore: 10,
-          report: `Analysis stopped at recursion depth ${recursionLevel} to prevent infinite loops. This indicates a deeply nested or circular dependency of remote scripts, which is a significant security risk.`,
-        };
-      }
+    if (recursionLevel > MAX_RECURSION_DEPTH) {
+      return {
+        riskScore: 10,
+        report: `Analysis stopped at recursion depth ${recursionLevel} to prevent infinite loops. This indicates a deeply nested or circular dependency of remote scripts, which is a significant security risk.`,
+      };
+    }
 
-      // First, check for remote scripts.
-      const remoteScripts = await detectAndFetchRemoteScripts({ scriptContent: input.scriptContent });
-      let subScriptAnalysis = '';
+    // First, check for remote scripts.
+    const remoteScripts = await detectAndFetchRemoteScripts({ scriptContent: input.scriptContent });
+    let subScriptAnalysis = '';
 
-      if (remoteScripts.length > 0) {
-        const analysisPromises = remoteScripts.map(async (subScript) => {
-          if (subScript.error || !subScript.content) {
-            return `
+    if (remoteScripts.length > 0) {
+      const analysisPromises = remoteScripts.map(async (subScript) => {
+        if (subScript.error || !subScript.content) {
+          return `
 --------------------------------------------------
 Sub-script analysis for: ${subScript.url}
 ERROR: Could not fetch or analyze script. ${subScript.error || 'Content was empty.'}
 This is a high risk, as it introduces unverified remote code.
 --------------------------------------------------`;
-          }
+        }
 
-          const subAnalysis = await assessRiskAndProvideReport({
-            scriptContent: subScript.content,
-            _recursionLevel: recursionLevel + 1,
-          });
+        const subAnalysis = await assessRiskAndProvideReport({
+          scriptContent: subScript.content,
+          _recursionLevel: recursionLevel + 1,
+        });
 
-          return `
+        return `
 --------------------------------------------------
 Sub-script analysis for: ${subScript.url}
 Risk Score: ${subAnalysis.riskScore}/10
 ---
 ${subAnalysis.report}
 --------------------------------------------------`;
-        });
+      });
 
-        const reports = await Promise.all(analysisPromises);
-        subScriptAnalysis = reports.join('\n\n');
-        span.setAttribute('subscript.reports', subScriptAnalysis);
-      }
+      const reports = await Promise.all(analysisPromises);
+      subScriptAnalysis = reports.join('\n\n');
+    }
 
-      // Now, call the LLM with the main script and the sub-script analysis.
-      const finalPromptInput = {
-        scriptContent: input.scriptContent,
-        subScriptAnalysis: subScriptAnalysis || undefined, // a Handlebars helper treats empty string as false
-      };
+    // Now, call the LLM with the main script and the sub-script analysis.
+    const finalPromptInput = {
+      scriptContent: input.scriptContent,
+      subScriptAnalysis: subScriptAnalysis || undefined, // a Handlebars helper treats empty string as false
+    };
 
-      const finalResponse = await assessRiskAndProvideReportPrompt(finalPromptInput);
+    const finalResponse = await assessRiskAndProvideReportPrompt(finalPromptInput);
 
-      return finalResponse.output!;
-    });
+    return finalResponse.output!;
   }
 );
