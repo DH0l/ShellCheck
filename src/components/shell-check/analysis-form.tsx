@@ -6,15 +6,22 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, ClipboardPaste, XCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, ClipboardPaste, XCircle, Link } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
-  scriptContent: z.string().min(1, 'Script content cannot be empty.'),
+  scriptContent: z.string().optional(),
+  scriptUrl: z.string().optional(),
+}).refine(data => !!data.scriptContent || !!data.scriptUrl, {
+  message: 'Please provide either script content or a URL.',
+  path: ['scriptContent'], // Show error on one of the fields
 });
 
 type AnalysisFormProps = {
-  onAnalyze: (scriptContent: string) => void;
+  onAnalyze: (values: { scriptContent?: string; scriptUrl?: string }) => void;
   isLoading: boolean;
   onClear: () => void;
   hasResult: boolean;
@@ -37,23 +44,33 @@ export function AnalysisForm({ onAnalyze, isLoading, onClear, hasResult }: Analy
     resolver: zodResolver(formSchema),
     defaultValues: {
       scriptContent: '',
+      scriptUrl: '',
     },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    onAnalyze(values.scriptContent);
+    onAnalyze(values);
   }
 
   const handlePasteExample = () => {
     form.setValue('scriptContent', exampleScript);
+    form.setValue('scriptUrl', '');
   };
+
+  const handleClear = () => {
+    form.reset({ scriptContent: '', scriptUrl: '' });
+    onClear();
+  }
+  
+  const scriptContent = form.watch('scriptContent');
+  const scriptUrl = form.watch('scriptUrl');
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Analyze Shell Script</CardTitle>
         <CardDescription>
-          Paste your shell script below to scan for dangerous code patterns without execution.
+          Paste your shell script below or provide a URL to scan for dangerous code patterns without execution.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -70,20 +87,58 @@ export function AnalysisForm({ onAnalyze, isLoading, onClear, hasResult }: Analy
                       placeholder="Paste your shell script here..."
                       className="min-h-[250px] font-code text-sm"
                       {...field}
+                      disabled={!!scriptUrl}
+                      onChange={(e) => {
+                        if (e.target.value) form.setValue('scriptUrl', '');
+                        field.onChange(e);
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <div className="flex flex-wrap items-center justify-between gap-2">
+
+            <div className="relative flex items-center">
+                <Separator className="flex-1" />
+                <span className="mx-4 text-sm text-muted-foreground">OR</span>
+                <Separator className="flex-1" />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="scriptUrl"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="sr-only">Script URL</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Link className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="https://example.com/script.sh"
+                        className="pl-9"
+                        {...field}
+                        disabled={!!scriptContent}
+                        onChange={(e) => {
+                            if (e.target.value) form.setValue('scriptContent', '');
+                            field.onChange(e);
+                        }}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
               <Button type="button" variant="ghost" onClick={handlePasteExample}>
                 <ClipboardPaste />
                 Paste Example
               </Button>
               <div className="flex items-center gap-2">
                 {hasResult && (
-                  <Button type="button" variant="outline" onClick={() => { form.reset({scriptContent: ''}); onClear(); }}>
+                  <Button type="button" variant="outline" onClick={handleClear}>
                     <XCircle />
                     Clear
                   </Button>

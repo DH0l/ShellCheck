@@ -12,13 +12,13 @@ export function ShellCheckPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleAnalysis = async (scriptContent: string) => {
+  const handleAnalysis = async (values: { scriptContent?: string, scriptUrl?: string }) => {
     setIsLoading(true);
     setError(null);
     setAnalysisResult(null);
     setAnalysisId(null);
 
-    const result = await analyzeScriptAction(scriptContent);
+    const result = await analyzeScriptAction(values);
     if (result.error) {
       setError(result.error);
     } else if (result.data) {
