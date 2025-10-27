@@ -10,6 +10,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import {detectAndFetchRemoteScripts} from '../tools/detect-and-fetch-remote-scripts';
+import {runInNewSpan} from '@genkit-ai/core/instrumentation';
 
 const AssessRiskAndProvideReportInputSchema = z.object({
   scriptContent: z.string().describe('The content of the shell script to be analyzed.'),
@@ -19,7 +20,7 @@ const AssessRiskAndProvideReportInputSchema = z.object({
 export type AssessRiskAndProvideReportInput = z.infer<typeof AssessRiskAndProvideReportInputSchema>;
 
 const AssessRiskAndProvideReportOutputSchema = z.object({
-  riskScore: z.number().describe('A numerical score representing the overall risk level of the script.'),
+  riskScore: z.number().describe('A numerical score representing the overall risk level of the script (1-10).'),
   report: z.string().describe('A detailed report outlining the identified issues, their locations, and remediation suggestions.'),
 });
 export type AssessRiskAndProvideReportOutput = z.infer<typeof AssessRiskAndProvideReportOutputSchema>;
@@ -34,24 +35,35 @@ const MAX_RECURSION_DEPTH = 3;
 
 const assessRiskAndProvideReportPrompt = ai.definePrompt({
   name: 'assessRiskAndProvideReportPrompt',
-  input: {schema: AssessRiskAndProvideReportInputSchema},
+  input: {schema: z.any()},
   output: {schema: AssessRiskAndProvideReportOutputSchema},
   tools: [detectAndFetchRemoteScripts],
   prompt: `You are an AI tool that analyzes shell scripts for potential security risks and vulnerabilities.
-  Based on the provided script content, assess the overall risk level and generate a detailed report.
+  Based on the provided script content and any sub-script analysis, assess the overall risk level and generate a single, comprehensive report.
 
-  The report should include the following:
-  - A risk score (1-10, where 1 is very low risk and 10 is very high risk) based on the severity and number of detected issues.
-  - A detailed description of each identified issue, including its location in the code.
-  - Specific suggestions for remediating each identified issue to improve the script's security.
+  The report should include:
+  - A final, synthesized risk score (1-10, where 1 is very low risk and 10 is very high risk).
+  - A detailed description of each identified issue, including its location.
+  - Specific suggestions for remediating each issue.
 
   If you detect that the script is sourcing other scripts from a remote URL, use the 'detectAndFetchRemoteScripts' tool to fetch their content.
-  You MUST incorporate the analysis of any fetched sub-scripts into your main report to provide a comprehensive security overview.
+  The analysis of these sub-scripts will be provided back to you. You MUST incorporate the analysis of any fetched sub-scripts into your main report.
+  Do not simply list the sub-script reports. Synthesize the findings to create a holistic view of the security posture.
+  If a sub-script has a high risk score, the main script's risk score MUST be elevated accordingly.
 
-  Here is the shell script content:
+  Here is the main shell script content:
   \`\`\`shell
   {{{scriptContent}}}
   \`\`\`
+
+  {{#if subScriptAnalysis}}
+  ---
+  ADDITIONAL CONTEXT FROM SUB-SCRIPT ANALYSIS:
+  The following remote scripts were sourced by the main script. Their contents have been analyzed, and the reports are below.
+  You MUST integrate these findings into your final, combined report for the main script.
+
+  {{{subScriptAnalysis}}}
+  {{/if}}
   `,
 });
 
@@ -62,70 +74,60 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
     outputSchema: AssessRiskAndProvideReportOutputSchema,
   },
   async input => {
-    const recursionLevel = input._recursionLevel ?? 0;
-    if (recursionLevel > MAX_RECURSION_DEPTH) {
-      return {
-        riskScore: 10,
-        report: `Analysis stopped at recursion depth ${recursionLevel} to prevent infinite loops. This indicates a deeply nested or circular dependency of remote scripts, which is a significant security risk.`,
-      };
-    }
+    return await runInNewSpan('assess-risk-flow', async (span) => {
+      const recursionLevel = input._recursionLevel ?? 0;
+      span.setAttribute('recursion.level', recursionLevel);
 
-    const llmResponse = await assessRiskAndProvideReportPrompt(input);
-    const toolRequests = llmResponse.toolRequests;
+      if (recursionLevel > MAX_RECURSION_DEPTH) {
+        return {
+          riskScore: 10,
+          report: `Analysis stopped at recursion depth ${recursionLevel} to prevent infinite loops. This indicates a deeply nested or circular dependency of remote scripts, which is a significant security risk.`,
+        };
+      }
 
-    if (toolRequests.length === 0) {
-      return llmResponse.output!;
-    }
+      // First, check for remote scripts.
+      const remoteScripts = await detectAndFetchRemoteScripts({ scriptContent: input.scriptContent });
+      let subScriptAnalysis = '';
 
-    const toolOutputs = await Promise.all(
-      toolRequests.map(async call => {
-        const toolOutput = await call.run();
-        // We need to provide the output back to the LLM.
-        return call.output(toolOutput);
-      })
-    );
-
-    const subScriptReports = await Promise.all(
-      toolOutputs.map(async output => {
-        const subScripts = output.output as z.infer<typeof detectAndFetchRemoteScripts.outputSchema>;
-        if (!subScripts || subScripts.length === 0) return '';
-
-        const reports = await Promise.all(
-          subScripts.map(async subScript => {
-            if (!subScript.content) return `Could not fetch or analyze script from ${subScript.url}.`;
-
-            const subAnalysis = await assessRiskAndProvideReport({
-              scriptContent: subScript.content,
-              _recursionLevel: recursionLevel + 1,
-            });
-
+      if (remoteScripts.length > 0) {
+        const analysisPromises = remoteScripts.map(async (subScript) => {
+          if (subScript.error || !subScript.content) {
             return `
+--------------------------------------------------
+Sub-script analysis for: ${subScript.url}
+ERROR: Could not fetch or analyze script. ${subScript.error || 'Content was empty.'}
+This is a high risk, as it introduces unverified remote code.
+--------------------------------------------------`;
+          }
+
+          const subAnalysis = await assessRiskAndProvideReport({
+            scriptContent: subScript.content,
+            _recursionLevel: recursionLevel + 1,
+          });
+
+          return `
 --------------------------------------------------
 Sub-script analysis for: ${subScript.url}
 Risk Score: ${subAnalysis.riskScore}/10
 ---
 ${subAnalysis.report}
---------------------------------------------------
-`;
-          })
-        );
-        return reports.join('\n\n');
-      })
-    );
+--------------------------------------------------`;
+        });
 
-    const finalInput = {
-      ...input,
-      scriptContent: `${input.scriptContent}\n\n
----
-ADDITIONAL CONTEXT: The following are analysis reports for remote scripts that were sourced by the main script.
-You MUST incorporate these findings into your final, combined report for the main script. Do not just list them.
-Synthesize the findings to create a holistic view of the security posture.
-If a sub-script has a high risk score, the main script's risk score should be elevated accordingly.
+        const reports = await Promise.all(analysisPromises);
+        subScriptAnalysis = reports.join('\n\n');
+        span.setAttribute('subscript.reports', subScriptAnalysis);
+      }
 
-${subScriptReports.join('\n\n')}`,
-    };
+      // Now, call the LLM with the main script and the sub-script analysis.
+      const finalPromptInput = {
+        scriptContent: input.scriptContent,
+        subScriptAnalysis: subScriptAnalysis || undefined, // a Handlebars helper treats empty string as false
+      };
 
-    const finalResponse = await assessRiskAndProvideReportPrompt(finalInput);
-    return finalResponse.output!;
+      const finalResponse = await assessRiskAndProvideReportPrompt(finalPromptInput);
+
+      return finalResponse.output!;
+    });
   }
 );
