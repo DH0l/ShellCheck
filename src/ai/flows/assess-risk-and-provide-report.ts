@@ -18,9 +18,15 @@ const AssessRiskAndProvideReportInputSchema = z.object({
 });
 export type AssessRiskAndProvideReportInput = z.infer<typeof AssessRiskAndProvideReportInputSchema>;
 
+const BillOfMaterialsSchema = z.object({
+  remoteScripts: z.array(z.string().url()).describe('A list of URLs for all remote scripts that are sourced or executed.'),
+  externalBinaries: z.array(z.string()).describe('A list of any external binaries that are downloaded and executed.'),
+});
+
 const AssessRiskAndProvideReportOutputSchema = z.object({
   riskScore: z.number().describe('A numerical score representing the overall risk level of the script (1-10).'),
   report: z.string().describe('A detailed report outlining the identified issues, their locations, and remediation suggestions.'),
+  billOfMaterials: BillOfMaterialsSchema.describe('A bill of materials listing all detected remote scripts and external binaries.'),
 });
 export type AssessRiskAndProvideReportOutput = z.infer<typeof AssessRiskAndProvideReportOutputSchema>;
 
@@ -40,13 +46,16 @@ const assessRiskAndProvideReportPrompt = ai.definePrompt({
   prompt: `You are an AI tool that analyzes shell scripts for potential security risks and vulnerabilities.
   Based on the provided script content and any sub-script analysis, assess the overall risk level and generate a single, comprehensive report.
 
-  The report should include:
-  - A final, synthesized risk score (1-10, where 1 is very low risk and 10 is very high risk).
-  - A detailed description of each identified issue, including its location.
-  - Specific suggestions for remediating each issue.
+  Your response MUST include:
+  1. A final, synthesized risk score (1-10, where 1 is very low risk and 10 is very high risk).
+  2. A detailed description of each identified issue, including its location.
+  3. Specific suggestions for remediating each issue.
+  4. A "bill of materials" that includes:
+     - A list of all remote script URLs that are downloaded and executed.
+     - A list of any external binaries that are downloaded and executed.
 
   If you detect that the script is sourcing other scripts from a remote URL, use the 'detectAndFetchRemoteScripts' tool to fetch their content.
-  The analysis of these sub-scripts will be provided back to you. You MUST incorporate the analysis of any fetched sub-scripts into your main report.
+  The analysis of these sub-scripts will be provided back to you. You MUST incorporate the analysis of any fetched sub-scripts into your main report and bill of materials.
   Do not simply list the sub-script reports. Synthesize the findings to create a holistic view of the security posture.
   If a sub-script has a high risk score, the main script's risk score MUST be elevated accordingly.
 
@@ -59,7 +68,7 @@ const assessRiskAndProvideReportPrompt = ai.definePrompt({
   ---
   ADDITIONAL CONTEXT FROM SUB-SCRIPT ANALYSIS:
   The following remote scripts were sourced by the main script. Their contents have been analyzed, and the reports are below.
-  You MUST integrate these findings into your final, combined report for the main script.
+  You MUST integrate these findings and their bill of materials into your final, combined report for the main script.
 
   {{{subScriptAnalysis}}}
   {{/if}}
@@ -79,6 +88,7 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
       return {
         riskScore: 10,
         report: `Analysis stopped at recursion depth ${recursionLevel} to prevent infinite loops. This indicates a deeply nested or circular dependency of remote scripts, which is a significant security risk.`,
+        billOfMaterials: { remoteScripts: [], externalBinaries: [] },
       };
     }
 
@@ -94,6 +104,9 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
 Sub-script analysis for: ${subScript.url}
 ERROR: Could not fetch or analyze script. ${subScript.error || 'Content was empty.'}
 This is a high risk, as it introduces unverified remote code.
+Bill of Materials:
+  - Remote Scripts: [${subScript.url}]
+  - External Binaries: []
 --------------------------------------------------`;
         }
 
@@ -108,6 +121,10 @@ Sub-script analysis for: ${subScript.url}
 Risk Score: ${subAnalysis.riskScore}/10
 ---
 ${subAnalysis.report}
+---
+Bill of Materials from ${subScript.url}:
+  - Remote Scripts: ${JSON.stringify(subAnalysis.billOfMaterials.remoteScripts)}
+  - External Binaries: ${JSON.stringify(subAnalysis.billOfMaterials.externalBinaries)}
 --------------------------------------------------`;
       });
 

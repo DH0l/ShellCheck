@@ -2,7 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, FileCode2, Package } from 'lucide-react';
 import { FeedbackForm } from './feedback-form';
 import type { AssessRiskAndProvideReportOutput } from '@/ai/flows/assess-risk-and-provide-report';
 
@@ -34,6 +34,54 @@ const RiskScoreIndicator = ({ score }: { score: number }) => (
     <Progress value={score * 10} className="h-3" indicatorClassName={getRiskColor(score)} />
   </div>
 );
+
+const BillOfMaterialsDisplay = ({ bom }: { bom: AssessRiskAndProvideReportOutput['billOfMaterials'] }) => {
+  const hasRemoteScripts = bom.remoteScripts && bom.remoteScripts.length > 0;
+  const hasExternalBinaries = bom.externalBinaries && bom.externalBinaries.length > 0;
+
+  if (!hasRemoteScripts && !hasExternalBinaries) {
+    return null;
+  }
+
+  return (
+    <div>
+      <h3 className="mb-4 text-lg font-semibold">Bill of Materials</h3>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {hasRemoteScripts && (
+          <Card>
+            <CardHeader className="flex-row items-center gap-3 space-y-0">
+              <FileCode2 className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base font-semibold">Remote Scripts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="list-inside list-disc space-y-1 text-sm">
+                {bom.remoteScripts.map((script, index) => (
+                  <li key={index} className="break-all">{script}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+        {hasExternalBinaries && (
+          <Card>
+            <CardHeader className="flex-row items-center gap-3 space-y-0">
+              <Package className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base font-semibold">External Binaries</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="list-inside list-disc space-y-1 text-sm">
+                {bom.externalBinaries.map((binary, index) => (
+                  <li key={index} className="break-all">{binary}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+};
+
 
 export function ReportDisplay({ result, isLoading, error, analysisId }: ReportDisplayProps) {
   if (isLoading) {
@@ -86,6 +134,7 @@ export function ReportDisplay({ result, isLoading, error, analysisId }: ReportDi
               <pre className="whitespace-pre-wrap break-words">{result.report}</pre>
             </div>
           </div>
+           {result.billOfMaterials && <BillOfMaterialsDisplay bom={result.billOfMaterials} />}
         </CardContent>
       </Card>
 
