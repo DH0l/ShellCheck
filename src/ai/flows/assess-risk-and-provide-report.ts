@@ -57,7 +57,7 @@ const assessRiskAndProvideReportPrompt = ai.definePrompt({
   If you detect that the script is sourcing other scripts from a remote URL, use the 'detectAndFetchRemoteScripts' tool to fetch their content.
   The analysis of these sub-scripts will be provided back to you. You MUST incorporate the analysis of any fetched sub-scripts into your main report and bill of materials.
   Do not simply list the sub-script reports. Synthesize the findings to create a holistic view of the security posture.
-  If a sub-script has a high risk score, the main script's risk score MUST be elevated accordingly.
+  If a sub-script has a high risk score, or fails to be analyzed, the main script's risk score MUST be elevated accordingly.
 
   Here is the main shell script content:
   \`\`\`shell
@@ -103,7 +103,7 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
 --------------------------------------------------
 Sub-script analysis for: ${subScript.url}
 ERROR: Could not fetch or analyze script. ${subScript.error || 'Content was empty.'}
-This is a high risk, as it introduces unverified remote code.
+This is a high risk, as it introduces unverified remote code. The inability to analyze this script significantly increases the overall risk of the main script.
 Bill of Materials:
   - Remote Scripts: [${subScript.url}]
   - External Binaries: []

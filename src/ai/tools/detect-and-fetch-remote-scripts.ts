@@ -47,13 +47,13 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
           if (!response.ok) {
             return {
               url,
-              error: `Failed to fetch script: ${response.status} ${response.statusText}`,
+              error: `Failed to fetch script from ${url}. Status: ${response.status} ${response.statusText}. This introduces a significant security risk as the script's content cannot be verified.`,
             };
           }
           const content = await response.text();
           return { url, content };
         } catch (e: any) {
-          return { url, error: `Exception caught while fetching script: ${e.message}` };
+          return { url, error: `An exception occurred while trying to fetch script from ${url}: ${e.message}. This could be due to a network issue, DNS problem, or the host being unreachable.` };
         }
       })
     );
