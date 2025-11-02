@@ -3,8 +3,8 @@ import { ThemeToggle } from '../theme-toggle';
 
 export function Header() {
   return (
-    <header className="border-b bg-card">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
+    <header className="sticky top-0 z-50 w-full border-b bg-card/80 backdrop-blur-sm">
+      <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <Shield className="h-7 w-7 text-primary" />
           <h1 className="font-headline text-xl font-bold text-primary">

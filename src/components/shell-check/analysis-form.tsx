@@ -7,17 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Loader2, ClipboardPaste, XCircle, Link } from 'lucide-react';
+import { Loader2, ClipboardPaste, XCircle, Link, ScanLine } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   scriptContent: z.string().optional(),
-  scriptUrl: z.string().optional(),
+  scriptUrl: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal('')),
 }).refine(data => !!data.scriptContent || !!data.scriptUrl, {
   message: 'Please provide either script content or a URL.',
-  path: ['scriptContent'], // Show error on one of the fields
+  path: ['scriptContent'], 
 });
 
 type AnalysisFormProps = {
@@ -132,13 +131,13 @@ export function AnalysisForm({ onAnalyze, isLoading, onClear, hasResult }: Analy
             />
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
-              <Button type="button" variant="ghost" onClick={handlePasteExample}>
+              <Button type="button" variant="ghost" onClick={handlePasteExample} disabled={isLoading}>
                 <ClipboardPaste />
                 Paste Example
               </Button>
               <div className="flex items-center gap-2">
                 {hasResult && (
-                  <Button type="button" variant="outline" onClick={handleClear}>
+                  <Button type="button" variant="outline" onClick={handleClear} disabled={isLoading}>
                     <XCircle />
                     Clear
                   </Button>
@@ -150,7 +149,10 @@ export function AnalysisForm({ onAnalyze, isLoading, onClear, hasResult }: Analy
                       Analyzing...
                     </>
                   ) : (
-                    'Analyze Script'
+                    <>
+                      <ScanLine />
+                      Analyze Script
+                    </>
                   )}
                 </Button>
               </div>

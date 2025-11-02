@@ -2,9 +2,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, FileCode2, Package } from 'lucide-react';
+import { AlertTriangle, FileCode2, Package, NotebookPen } from 'lucide-react';
 import { FeedbackForm } from './feedback-form';
 import type { AssessRiskAndProvideReportOutput } from '@/ai/flows/assess-risk-and-provide-report';
+import { Separator } from '../ui/separator';
 
 type ReportDisplayProps = {
   result: AssessRiskAndProvideReportOutput | null;
@@ -49,7 +50,7 @@ const BillOfMaterialsDisplay = ({ bom }: { bom: AssessRiskAndProvideReportOutput
       <div className="grid gap-4 sm:grid-cols-2">
         {hasRemoteScripts && (
           <Card>
-            <CardHeader className="flex-row items-center gap-3 space-y-0">
+            <CardHeader className="flex-row items-center gap-3 space-y-0 pb-2">
               <FileCode2 className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-base font-semibold">Remote Scripts</CardTitle>
             </CardHeader>
@@ -64,7 +65,7 @@ const BillOfMaterialsDisplay = ({ bom }: { bom: AssessRiskAndProvideReportOutput
         )}
         {hasExternalBinaries && (
           <Card>
-            <CardHeader className="flex-row items-center gap-3 space-y-0">
+            <CardHeader className="flex-row items-center gap-3 space-y-0 pb-2">
               <Package className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-base font-semibold">External Binaries</CardTitle>
             </CardHeader>
@@ -128,13 +129,18 @@ export function ReportDisplay({ result, isLoading, error, analysisId }: ReportDi
             <h3 className="mb-2 text-lg font-semibold">Risk Score</h3>
             <RiskScoreIndicator score={result.riskScore} />
           </div>
+          <Separator />
           <div>
-            <h3 className="mb-2 text-lg font-semibold">Details & Remediation</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <NotebookPen className="h-5 w-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold">Details & Remediation</h3>
+            </div>
             <div className="max-h-[500px] overflow-auto rounded-md border bg-secondary/30 p-4 font-code text-sm">
               <pre className="whitespace-pre-wrap break-words">{result.report}</pre>
             </div>
           </div>
-           {result.billOfMaterials && <BillOfMaterialsDisplay bom={result.billOfMaterials} />}
+          {(result.billOfMaterials?.remoteScripts?.length > 0 || result.billOfMaterials?.externalBinaries?.length > 0) && <Separator />}
+          {result.billOfMaterials && <BillOfMaterialsDisplay bom={result.billOfMaterials} />}
         </CardContent>
       </Card>
 
