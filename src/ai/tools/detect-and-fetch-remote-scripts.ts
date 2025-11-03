@@ -4,7 +4,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 const FetchedScriptSchema = z.object({
   url: z.string().url().describe('The URL of the fetched script.'),
