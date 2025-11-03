@@ -16,7 +16,7 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
   {
     name: 'detectAndFetchRemoteScripts',
     description:
-      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, $(curl...)). It then fetches the content of these remote scripts.',
+      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, $(curl...), source <(curl...)). It then fetches the content of these remote scripts.',
     inputSchema: z.object({
       scriptContent: z.string().describe('The content of the primary shell script to analyze.'),
     }),
@@ -27,15 +27,17 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
     // 1. curl/wget piping to a shell (bash, sh, zsh)
     // 2. Command substitution with $()
     // 3. Command substitution with backticks ``
-    const urlRegex = /(?:(?:curl|wget)[^;\n]*?)(https?:\/\/[^\s'"`) ]+)/g;
-
+    // 4. Process substitution with <() used with source, bash, sh, etc.
+    const urlRegex = /(?:curl|wget)[^;\n]*?(https?:\/\/[^\s'"`) ]+)/g;
 
     const urls: string[] = [];
     let match;
     while ((match = urlRegex.exec(scriptContent)) !== null) {
       // We also check if the line contains an execution pattern to reduce false positives.
       const line = scriptContent.substring(0, match.index).split('\n').pop() + match[0];
-      if (/(?:bash|sh|zsh|\$\(|`)/.test(line)) {
+      
+      // Updated condition to catch pipes, command substitution, and process substitution
+      if (/(?:bash|sh|zsh|\$\(|`|<)/.test(line)) {
         urls.push(match[1].trim());
       }
     }
