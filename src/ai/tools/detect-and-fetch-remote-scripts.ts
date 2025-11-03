@@ -12,44 +12,26 @@ const FetchedScriptSchema = z.object({
   error: z.string().optional().describe('An error message if the script could not be fetched.'),
 });
 
-// Helper function to check if a string is a valid URL
-const isValidUrl = (urlString: string) => {
-  try {
-    // new URL() will throw an error if the URL is not valid.
-    new URL(urlString);
-    return true;
-  } catch (e) {
-    return false;
-  }
-};
-
 export const detectAndFetchRemoteScripts = ai.defineTool(
   {
     name: 'detectAndFetchRemoteScripts',
     description:
-      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, $(curl...), source <(curl...)). It then fetches the content of these remote scripts.',
+      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, wget ... | sh). It then fetches the content of these remote scripts.',
     inputSchema: z.object({
       scriptContent: z.string().describe('The content of the primary shell script to analyze.'),
     }),
     outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content.'),
   },
   async ({ scriptContent }) => {
-    // This more comprehensive regex looks for several patterns:
-    // 1. curl/wget piping to a shell (bash, sh, zsh)
-    // 2. Command substitution with $()
-    // 3. Command substitution with backticks ``
-    // 4. Process substitution with <() used with source, bash, sh, etc.
-    const urlRegex = /(?:curl|wget)[^;\n]*?\s+(?:-fsSL\s+)?(https?:\/\/[^\s'"`) ]+)/g;
+    // This regex looks for curl/wget piping to a shell.
+    const urlRegex = /(?:curl|wget)\s+[^|]+\s+(https?:\/\/[^\s'"`]+)/g;
 
     const urls: string[] = [];
     let match;
     while ((match = urlRegex.exec(scriptContent)) !== null) {
-      // The second capturing group should be the URL
+      // The first capturing group should be the URL.
       if (match[1]) {
-        const potentialUrl = match[1].trim();
-        if (isValidUrl(potentialUrl)) {
-          urls.push(potentialUrl);
-        }
+        urls.push(match[1]);
       }
     }
     
