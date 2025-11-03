@@ -10,6 +10,11 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import {detectAndFetchRemoteScripts} from '../tools/detect-and-fetch-remote-scripts';
+import knownScriptsData from '../known-scripts.json';
+import { sha256 } from '@/lib/crypto';
+
+const { knownScripts } = knownScriptsData;
+const knownScriptsMap = new Map(knownScripts.map(s => [s.url, s]));
 
 const AssessRiskAndProvideReportInputSchema = z.object({
   scriptContent: z.string().describe('The content of the shell script to be analyzed.'),
@@ -56,6 +61,8 @@ const assessRiskAndProvideReportPrompt = ai.definePrompt({
 
   If you detect that the script is sourcing other scripts from a remote URL, use the 'detectAndFetchRemoteScripts' tool to fetch their content.
   The analysis of these sub-scripts will be provided back to you. You MUST incorporate the analysis of any fetched sub-scripts into your main report and bill of materials.
+  Pay close attention to any "Integrity Check" results for known scripts. A "HASH MISMATCH" is a major security red flag and must be highlighted in the report and should significantly increase the risk score.
+
   Do not simply list the sub-script reports. Synthesize the findings to create a holistic view of the security posture.
   If a sub-script has a high risk score, or fails to be analyzed, the main script's risk score MUST be elevated accordingly.
 
@@ -98,8 +105,11 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
 
     if (remoteScripts.length > 0) {
       const analysisPromises = remoteScripts.map(async (subScript) => {
+        let integrityCheckReport = '';
+        const knownScript = knownScriptsMap.get(subScript.url);
+
         if (subScript.error || !subScript.content) {
-          return `
+          const errorMessage = `
 --------------------------------------------------
 Sub-script analysis for: ${subScript.url}
 ERROR: Could not fetch or analyze script. ${subScript.error || 'Content was empty.'}
@@ -108,7 +118,27 @@ Bill of Materials:
   - Remote Scripts: [${subScript.url}]
   - External Binaries: []
 --------------------------------------------------`;
+          return errorMessage;
         }
+
+        if (knownScript) {
+          const actualHash = await sha256(subScript.content);
+          if (actualHash === knownScript.hash) {
+            integrityCheckReport = `Integrity Check: VERIFIED. The content of '${knownScript.name}' matches the known-good hash. It is considered safe.`;
+             // If hash matches, we can skip deeper analysis of this script for efficiency.
+            return `
+--------------------------------------------------
+Sub-script analysis for: ${subScript.url} (${knownScript.name})
+${integrityCheckReport}
+Bill of Materials:
+- Remote Scripts: [${subScript.url}]
+- External Binaries: []
+--------------------------------------------------`;
+          } else {
+            integrityCheckReport = `Integrity Check: HASH MISMATCH. The content of '${knownScript.name}' has CHANGED from the known-good version. This is a SERIOUS security risk. Expected hash: ${knownScript.hash}, but got: ${actualHash}. The script must be analyzed with extreme caution.`;
+          }
+        }
+
 
         const subAnalysis = await assessRiskAndProvideReport({
           scriptContent: subScript.content,
@@ -118,6 +148,7 @@ Bill of Materials:
         return `
 --------------------------------------------------
 Sub-script analysis for: ${subScript.url}
+${integrityCheckReport ? integrityCheckReport + '\n---' : ''}
 Risk Score: ${subAnalysis.riskScore}/10
 ---
 ${subAnalysis.report}

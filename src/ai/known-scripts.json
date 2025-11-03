@@ -1,0 +1,10 @@
+{
+  "knownScripts": [
+    {
+      "url": "https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func",
+      "name": "ProxmoxVE build.func",
+      "hash": "4a7b55759714020a595b119a02553b94262ea838030282b8853b6555543c68b7",
+      "description": "A common library of helper functions used by Proxmox VE community scripts."
+    }
+  ]
+}
