@@ -16,21 +16,28 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
   {
     name: 'detectAndFetchRemoteScripts',
     description:
-      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash). It then fetches the content of these remote scripts.',
+      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, $(curl...)). It then fetches the content of these remote scripts.',
     inputSchema: z.object({
       scriptContent: z.string().describe('The content of the primary shell script to analyze.'),
     }),
     outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content.'),
   },
   async ({ scriptContent }) => {
-    // Regular expression to find curl/wget commands that pipe to a shell.
-    // This is more comprehensive and covers more cases.
-    const urlRegex = /(?:curl\s+-?L?s?f?S?|wget\s+-?q?O?-)\s+(['"]?)(https?:\/\/[^\s'"]+)\1\s*\|\s*(?:bash|sh)/g;
+    // This more comprehensive regex looks for several patterns:
+    // 1. curl/wget piping to a shell (bash, sh, zsh)
+    // 2. Command substitution with $()
+    // 3. Command substitution with backticks ``
+    const urlRegex = /(?:(?:curl|wget)[^;\n]*?)(https?:\/\/[^\s'"`) ]+)/g;
+
 
     const urls: string[] = [];
     let match;
     while ((match = urlRegex.exec(scriptContent)) !== null) {
-      urls.push(match[2]);
+      // We also check if the line contains an execution pattern to reduce false positives.
+      const line = scriptContent.substring(0, match.index).split('\n').pop() + match[0];
+      if (/(?:bash|sh|zsh|\$\(|`)/.test(line)) {
+        urls.push(match[1].trim());
+      }
     }
     
     // Deduplicate URLs
