@@ -12,6 +12,16 @@ const FetchedScriptSchema = z.object({
   error: z.string().optional().describe('An error message if the script could not be fetched.'),
 });
 
+// Helper function to check if a string is a valid URL
+const isValidUrl = (urlString: string) => {
+  try {
+    new URL(urlString);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
 export const detectAndFetchRemoteScripts = ai.defineTool(
   {
     name: 'detectAndFetchRemoteScripts',
@@ -28,17 +38,17 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
     // 2. Command substitution with $()
     // 3. Command substitution with backticks ``
     // 4. Process substitution with <() used with source, bash, sh, etc.
-    const urlRegex = /(?:curl|wget)[^;\n]*?(https?:\/\/[^\s'"`) ]+)/g;
+    const urlRegex = /(?:curl|wget)[^;\n]*?\s+(?:-fsSL\s+)?(https?:\/\/[^\s'"`) ]+)/g;
 
     const urls: string[] = [];
     let match;
     while ((match = urlRegex.exec(scriptContent)) !== null) {
-      // We also check if the line contains an execution pattern to reduce false positives.
-      const line = scriptContent.substring(0, match.index).split('\n').pop() + match[0];
-      
-      // Updated condition to catch pipes, command substitution, and process substitution
-      if (/(?:bash|sh|zsh|\$\(|`|<)/.test(line)) {
-        urls.push(match[1].trim());
+      // The second capturing group should be the URL
+      if (match[1]) {
+        const potentialUrl = match[1].trim();
+        if (isValidUrl(potentialUrl)) {
+          urls.push(potentialUrl);
+        }
       }
     }
     
