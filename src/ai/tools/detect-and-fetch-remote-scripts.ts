@@ -15,6 +15,7 @@ const FetchedScriptSchema = z.object({
 // Helper function to check if a string is a valid URL
 const isValidUrl = (urlString: string) => {
   try {
+    // new URL() will throw an error if the URL is not valid.
     new URL(urlString);
     return true;
   } catch (e) {
