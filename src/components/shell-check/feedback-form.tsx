@@ -141,7 +141,7 @@ export function FeedbackForm({ analysisId }: FeedbackFormProps) {
               />
 
               <div className="flex justify-end pt-4">
-                <Button type="submit" disabled={isSubmitting || isSuccess}>
+                <Button type="submit" disabled={isSubmitting || isSuccess || form.getValues('accuracyRating') === 0}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

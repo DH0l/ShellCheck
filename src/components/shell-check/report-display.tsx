@@ -16,8 +16,8 @@ type ReportDisplayProps = {
 
 const getRiskColor = (score: number) => {
   if (score >= 8) return 'bg-destructive';
-  if (score >= 4) return 'bg-chart-4';
-  return 'bg-chart-2';
+  if (score >= 4) return 'bg-yellow-500';
+  return 'bg-green-500';
 };
 
 const getRiskText = (score: number) => {
@@ -131,12 +131,12 @@ export function ReportDisplay({ result, isLoading, error, analysisId }: ReportDi
           </div>
           <Separator />
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-4">
               <NotebookPen className="h-5 w-5 text-muted-foreground" />
               <h3 className="text-lg font-semibold">Details & Remediation</h3>
             </div>
-            <div className="max-h-[500px] overflow-auto rounded-md border bg-secondary/30 p-4 font-code text-sm">
-              <pre className="whitespace-pre-wrap break-words">{result.report}</pre>
+            <div className="prose prose-sm max-w-none rounded-md border bg-secondary/20 p-4">
+              <pre className="whitespace-pre-wrap break-words font-code">{result.report}</pre>
             </div>
           </div>
           {(result.billOfMaterials?.remoteScripts?.length > 0 || result.billOfMaterials?.externalBinaries?.length > 0) && <Separator />}

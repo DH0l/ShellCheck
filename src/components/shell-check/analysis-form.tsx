@@ -142,7 +142,7 @@ export function AnalysisForm({ onAnalyze, isLoading, onClear, hasResult }: Analy
                     Clear
                   </Button>
                 )}
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading || (!scriptContent && !scriptUrl)}>
                   {isLoading ? (
                     <>
                       <Loader2 className="animate-spin" />
