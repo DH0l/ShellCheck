@@ -8,13 +8,11 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 import {detectAndFetchRemoteScripts} from '../tools/detect-and-fetch-remote-scripts';
 
 const AssessRiskAndProvideReportInputSchema = z.object({
   scriptContent: z.string().describe('The content of the shell script to be analyzed.'),
-  // Internal property to prevent infinite recursion
-  _recursionLevel: z.number().optional(),
 });
 export type AssessRiskAndProvideReportInput = z.infer<typeof AssessRiskAndProvideReportInputSchema>;
 
@@ -36,43 +34,30 @@ export async function assessRiskAndProvideReport(
   return assessRiskAndProvideReportFlow(input);
 }
 
-const MAX_RECURSION_DEPTH = 3;
-
 const assessRiskAndProvideReportPrompt = ai.definePrompt({
   name: 'assessRiskAndProvideReportPrompt',
   input: {schema: z.any()},
   output: {schema: AssessRiskAndProvideReportOutputSchema},
   tools: [detectAndFetchRemoteScripts],
   prompt: `You are an AI tool that analyzes shell scripts for potential security risks and vulnerabilities.
-  Based on the provided script content and any sub-script analysis, assess the overall risk level and generate a single, comprehensive report.
+  Your response MUST be in the specified JSON format.
+  
+  You must provide three separate top-level properties in your JSON response: 'riskScore', 'report', and 'billOfMaterials'.
 
-  Your response MUST include:
-  1. A final, synthesized risk score (1-10, where 1 is very low risk and 10 is very high risk).
-  2. A detailed description of each identified issue, including its location.
-  3. Specific suggestions for remediating each issue.
-  4. A "bill of materials" that includes:
-     - A list of all remote script URLs that are downloaded and executed.
-     - A list of any external binaries that are downloaded and executed.
+  1.  **riskScore**: A numerical score from 1-10.
+  2.  **report**: A detailed markdown-formatted string describing each identified issue, its location, and remediation suggestions.
+  3.  **billOfMaterials**: A structured object containing two arrays:
+      - \`remoteScripts\`: A list of all remote script URLs that are downloaded and executed.
+      - \`externalBinaries\`: A list of any external binaries that are downloaded and executed.
 
   If you detect that the script is sourcing other scripts from a remote URL, use the 'detectAndFetchRemoteScripts' tool to fetch their content.
-  The analysis of these sub-scripts will be provided back to you. You MUST incorporate the analysis of any fetched sub-scripts into your main report and bill of materials.
-
-  Do not simply list the sub-script reports. Synthesize the findings to create a holistic view of the security posture.
-  If a sub-script has a high risk score, or fails to be analyzed, the main script's risk score MUST be elevated accordingly.
+  The tool will return the content of any successfully fetched scripts.
+  Incorporate the analysis of these sub-scripts into your main 'report' and list their URLs and any binaries in the 'billOfMaterials' object.
 
   Here is the main shell script content:
   \`\`\`shell
   {{{scriptContent}}}
   \`\`\`
-
-  {{#if subScriptAnalysis}}
-  ---
-  ADDITIONAL CONTEXT FROM SUB-SCRIPT ANALYSIS:
-  The following remote scripts were sourced by the main script. Their contents have been analyzed, and the reports are below.
-  You MUST integrate these findings and their bill of materials into your final, combined report for the main script.
-
-  {{{subScriptAnalysis}}}
-  {{/if}}
   `,
 });
 
@@ -83,61 +68,8 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
     outputSchema: AssessRiskAndProvideReportOutputSchema,
   },
   async input => {
-    const recursionLevel = input._recursionLevel ?? 0;
-
-    if (recursionLevel > MAX_RECURSION_DEPTH) {
-      return {
-        riskScore: 10,
-        report: `Analysis stopped at recursion depth ${recursionLevel} to prevent infinite loops. This indicates a deeply nested or circular dependency of remote scripts, which is a significant security risk.`,
-        billOfMaterials: { remoteScripts: [], externalBinaries: [] },
-      };
-    }
-
-    // First, check for remote scripts.
-    const remoteScripts = await detectAndFetchRemoteScripts({ scriptContent: input.scriptContent });
-    let subScriptAnalysis = '';
-
-    if (remoteScripts.length > 0) {
-      const analysisPromises = remoteScripts.map(async (subScript) => {
-        if (subScript.error || !subScript.content) {
-          const errorMessage = `
---------------------------------------------------
-Sub-script analysis for: ${subScript.url}
-ERROR: Could not fetch or analyze script. ${subScript.error || 'Content was empty.'}
-This is a high risk, as it introduces unverified remote code. The inability to analyze this script significantly increases the overall risk of the main script.
-Bill of Materials:
-  - Remote Scripts: [${subScript.url}]
-  - External Binaries: []
---------------------------------------------------`;
-          return errorMessage;
-        }
-
-        const subAnalysis = await assessRiskAndProvideReport({
-          scriptContent: subScript.content,
-          _recursionLevel: recursionLevel + 1,
-        });
-
-        return `
---------------------------------------------------
-Sub-script analysis for: ${subScript.url}
-Risk Score: ${subAnalysis.riskScore}/10
----
-${subAnalysis.report}
----
-Bill of Materials from ${subScript.url}:
-  - Remote Scripts: ${JSON.stringify(subAnalysis.billOfMaterials.remoteScripts)}
-  - External Binaries: ${JSON.stringify(subAnalysis.billOfMaterials.externalBinaries)}
---------------------------------------------------`;
-      });
-
-      const reports = await Promise.all(analysisPromises);
-      subScriptAnalysis = reports.join('\n\n');
-    }
-
-    // Now, call the LLM with the main script and the sub-script analysis.
     const finalPromptInput = {
       scriptContent: input.scriptContent,
-      subScriptAnalysis: subScriptAnalysis || undefined, // a Handlebars helper treats empty string as false
     };
 
     const finalResponse = await assessRiskAndProvideReportPrompt(finalPromptInput);
