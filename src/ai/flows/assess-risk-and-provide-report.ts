@@ -43,35 +43,43 @@ export async function assessRiskAndProvideReport(
 
 const assessRiskAndProvideReportPrompt = ai.definePrompt({
   name: 'assessRiskAndProvideReportPrompt',
-  input: {schema: z.any()},
+  input: {
+    schema: z.object({
+      scriptContent: z.string(),
+      verificationResults: BillOfMaterialsSchema,
+    }),
+  },
   output: {schema: AssessRiskAndProvideReportOutputSchema},
-  tools: [detectAndFetchRemoteScripts],
-  prompt: `You are an AI tool that analyzes shell scripts for potential security risks.
+  prompt: `You are an expert AI security analyst. Your task is to analyze a shell script for potential security risks and provide a detailed report in a structured JSON format.
 
-Analyze the provided script content. If you detect any lines that download and execute remote scripts (e.g., using curl or wget), you MUST use the 'detectAndFetchRemoteScripts' tool to fetch the content of those scripts.
+You will be given the main script content and a pre-compiled "Bill of Materials" that lists all detected remote scripts and their verification status.
 
-The tool will return the content of any fetched scripts, along with their verification status.
 - A 'verified' status means the script's content matches a known, trusted version.
-- An 'unverified' status means the script's content does not match any known version and must be treated with caution.
-- An 'error' status means the script could not be fetched, which is a significant risk.
+- An 'unverified' status means the script's content does not match any known version and must be treated with extreme caution.
+- An 'error' status means the script could not be fetched, which is itself a significant risk.
 
-Based on the content of the main script AND the content and verification status of any fetched remote scripts, provide a comprehensive security analysis. Your analysis should heavily factor in the trust level of the remote scripts. An unverified or erroneously fetched script should significantly increase the risk score.
+Your analysis MUST heavily factor in the verification status of these remote dependencies. An 'unverified' or 'error' status for a remote script should dramatically increase the risk score and be a primary focus of your report.
 
-Your response MUST be a valid JSON object that strictly adheres to the specified output schema.
+Based on ALL the information provided (the main script and the verification results), generate your analysis.
+
+Your response MUST be a single, valid JSON object that strictly adheres to the specified output schema.
 It must contain three top-level properties: 'riskScore', 'report', and 'billOfMaterials'.
 
 1.  **riskScore**: Assign a numerical score from 1-10 representing the overall risk.
-2.  **report**: Provide a detailed markdown-formatted string. Describe each identified issue, its location, and remediation suggestions.
-3.  **billOfMaterials**: This must be a separate JSON object containing two arrays:
-    - \`remoteScripts\`: An array of objects, where each object details a remote script's URL, its verification status ('verified', 'unverified', 'error'), and any relevant details (like an error message).
-    - \`externalBinaries\`: A list of any external binaries that are downloaded and executed.
+2.  **report**: Provide a detailed markdown-formatted string. Describe each identified issue, its location, why it's a risk (especially in the context of unverified scripts), and concrete remediation suggestions.
+3.  **billOfMaterials**: Analyze the script to identify any external binaries that are downloaded and executed. Populate the \`externalBinaries\` array with these findings. You do not need to modify the \`remoteScripts\` array; it is provided for your context. The final JSON output should include the original \`remoteScripts\` data alongside your findings for \`externalBinaries\`.
 
-Here is the main shell script content to analyze:
+Main shell script content to analyze:
 \`\`\`shell
 {{{scriptContent}}}
 \`\`\`
 
-REMINDER: Your entire output must be a single, valid JSON object matching the required schema. Do not include any other text or explanation outside of the JSON structure.`,
+Context - Verification results for remote scripts:
+\`\`\`json
+{{{json verificationResults}}}
+\`\`\`
+
+REMINDER: Your entire output must be a single, valid JSON object matching the required schema. Do not include any other text, comments, or explanations outside of the JSON structure.`,
 });
 
 const assessRiskAndProvideReportFlow = ai.defineFlow(
@@ -80,62 +88,51 @@ const assessRiskAndProvideReportFlow = ai.defineFlow(
     inputSchema: AssessRiskAndProvideReportInputSchema,
     outputSchema: AssessRiskAndProvideReportOutputSchema,
   },
-  async input => {
-    // We pass an empty object and let the tool call do the work.
-    const toolResponse = await assessRiskAndProvideReportPrompt(input);
+  async ({scriptContent}) => {
+    // 1. Detect and fetch all remote scripts first.
+    const detectedScripts = await detectAndFetchRemoteScripts({scriptContent});
 
-    if (!toolResponse.output) {
-      throw new Error('Analysis failed to produce an output.');
-    }
-
-    const fetchedScripts = toolResponse.toolRequests[0]?.toolResponse?.parts.map(p => p.data) || [];
-
-    const billOfMaterials: {
-      remoteScripts: z.infer<typeof FetchedScriptWithStatusSchema>[];
-      externalBinaries: string[]; // This will be populated by the LLM
-    } = {
+    // 2. Verify the fetched scripts against the known scripts database.
+    const knownScriptsMap = new Map(knownScripts.map(s => [s.url, s.hash]));
+    const verificationResults: z.infer<typeof BillOfMaterialsSchema> = {
       remoteScripts: [],
-      externalBinaries: toolResponse.output.billOfMaterials.externalBinaries || [],
+      externalBinaries: [], // This will be populated by the LLM later.
     };
 
-    const knownScriptsMap = new Map(knownScripts.map(s => [s.url, s.hash]));
-
-    for (const script of fetchedScripts) {
+    for (const script of detectedScripts) {
       if (script.error) {
-        billOfMaterials.remoteScripts.push({
+        verificationResults.remoteScripts.push({
           url: script.url,
           status: 'error',
           details: script.error,
         });
       } else if (script.hash && knownScriptsMap.get(script.url) === script.hash) {
-        billOfMaterials.remoteScripts.push({
+        verificationResults.remoteScripts.push({
           url: script.url,
           status: 'verified',
         });
       } else {
-        billOfMaterials.remoteScripts.push({
+        verificationResults.remoteScripts.push({
           url: script.url,
           status: 'unverified',
         });
       }
     }
 
-    // Create a new prompt input with the verification results included
-    const finalPromptInput = {
-      ...input,
-      verificationResults: billOfMaterials,
-    };
-    
-    // Call the prompt again with the full context.
-    const finalResponse = await assessRiskAndProvideReportPrompt(finalPromptInput);
-    
-    if (!finalResponse.output) {
-        throw new Error("Final analysis failed to produce an output.");
+    // 3. Call the prompt a single time with all context.
+    const {output} = await assessRiskAndProvideReportPrompt({
+      scriptContent,
+      verificationResults,
+    });
+
+    if (!output) {
+      throw new Error('Analysis failed to produce an output.');
     }
     
-    // Ensure the final BoM from the LLM is merged with our verified one
-    finalResponse.output.billOfMaterials.remoteScripts = billOfMaterials.remoteScripts;
+    // 4. The LLM populates the externalBinaries, but we trust our verified remoteScripts list more.
+    // So, we merge our verified list with the LLM's findings for binaries.
+    output.billOfMaterials.remoteScripts = verificationResults.remoteScripts;
 
-    return finalResponse.output;
+    return output;
   }
 );
