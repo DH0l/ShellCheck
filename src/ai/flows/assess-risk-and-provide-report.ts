@@ -39,26 +39,27 @@ const assessRiskAndProvideReportPrompt = ai.definePrompt({
   input: {schema: z.any()},
   output: {schema: AssessRiskAndProvideReportOutputSchema},
   tools: [detectAndFetchRemoteScripts],
-  prompt: `You are an AI tool that analyzes shell scripts for potential security risks and vulnerabilities.
-  Your response MUST be in the specified JSON format.
-  
-  You must provide three separate top-level properties in your JSON response: 'riskScore', 'report', and 'billOfMaterials'.
+  prompt: `You are an AI tool that analyzes shell scripts for potential security risks.
 
-  1.  **riskScore**: A numerical score from 1-10.
-  2.  **report**: A detailed markdown-formatted string describing each identified issue, its location, and remediation suggestions.
-  3.  **billOfMaterials**: A structured object containing two arrays:
-      - \`remoteScripts\`: A list of all remote script URLs that are downloaded and executed.
+  Analyze the provided script content. If you detect any lines that download and execute remote scripts (e.g., using curl or wget), you MUST use the 'detectAndFetchRemoteScripts' tool to fetch the content of those scripts.
+
+  Based on the content of the main script AND any fetched remote scripts, provide a comprehensive security analysis.
+
+  Your response MUST be a valid JSON object that strictly adheres to the specified output schema.
+  It must contain three top-level properties: 'riskScore', 'report', and 'billOfMaterials'.
+
+  1.  **riskScore**: Assign a numerical score from 1-10 representing the overall risk.
+  2.  **report**: Provide a detailed markdown-formatted string. Describe each identified issue, its location in the code (with line numbers), an explanation of the risk, and concrete suggestions for remediation.
+  3.  **billOfMaterials**: This must be a separate JSON object containing two arrays:
+      - \`remoteScripts\`: A list of all remote script URLs that are downloaded or sourced.
       - \`externalBinaries\`: A list of any external binaries that are downloaded and executed.
 
-  If you detect that the script is sourcing other scripts from a remote URL, use the 'detectAndFetchRemoteScripts' tool to fetch their content.
-  The tool will return the content of any successfully fetched scripts.
-  Incorporate the analysis of these sub-scripts into your main 'report' and list their URLs and any binaries in the 'billOfMaterials' object.
-
-  Here is the main shell script content:
+  Here is the main shell script content to analyze:
   \`\`\`shell
   {{{scriptContent}}}
   \`\`\`
-  `,
+
+  REMINDER: Your entire output must be a single, valid JSON object matching the required schema. Do not include any other text or explanation outside of the JSON structure.`,
 });
 
 const assessRiskAndProvideReportFlow = ai.defineFlow(
