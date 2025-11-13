@@ -15,24 +15,24 @@ const FetchedScriptSchema = z.object({
 });
 
 /**
- * Checks if a given string is a structurally valid URL for fetching, filtering out shell variables.
+ * Checks if a given string is a structurally valid and fetchable URL, filtering out shell variables.
  * @param str - The string to validate.
  * @returns True if the string is a valid URL, false otherwise.
  */
 function isValidUrl(str: string): boolean {
-  // Primary defense: Immediately reject any string that contains common shell variable syntax.
-  // This is the most common source of invalid URLs in this context.
-  if (/\${|`|'|"|\(|\)/.test(str)) {
+  // 1. Immediately reject any string that contains shell variable syntax or command substitution.
+  // This is the primary defense against the errors we've been seeing.
+  if (/\${|`|\$\(/.test(str)) {
     return false;
   }
   
-  // Use the standard URL constructor for robust parsing.
+  // 2. Use the standard URL constructor for robust parsing. This will throw an error for malformed URLs.
   try {
     const parsedUrl = new URL(str);
-    // Ensure the protocol is one we can fetch (http or https).
+    // 3. Ensure the protocol is one we can actually fetch (http or https).
     return ['http:', 'https:'].includes(parsedUrl.protocol);
   } catch (_) {
-    // If the URL constructor throws an error, it's definitively not a valid URL.
+    // If the URL constructor throws, it's definitively not a valid URL.
     return false;
   }
 }
@@ -48,8 +48,8 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
     outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content and hash.'),
   },
   async ({ scriptContent }) => {
-    // This regex is designed to capture URLs in common curl/wget patterns.
-    // It's intentionally broad to catch various formats. The strict validation happens next.
+    // This regex is designed to capture potential URLs in common curl/wget patterns.
+    // It's intentionally a bit broad, as the strict validation happens in `isValidUrl`.
     const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[^\s'"`${}()]+)/g;
     
     const potentialUrls: string[] = [];
