@@ -20,14 +20,17 @@ const FetchedScriptSchema = z.object({
  * @returns True if the string is a valid URL, false otherwise.
  */
 function isValidUrl(str: string): boolean {
-  // Simple but effective check to filter out strings containing shell variables.
+  // Filter out strings containing common shell variable patterns.
   if (str.includes('$') || str.includes('{') || str.includes('}')) {
     return false;
   }
   try {
-    new URL(str);
-    return true;
+    // Check if the URL can be parsed by the standard URL constructor.
+    const parsedUrl = new URL(str);
+    // Ensure it's a http or https protocol.
+    return ['http:', 'https:'].includes(parsedUrl.protocol);
   } catch (_) {
+    // If the URL constructor throws an error, it's not a valid URL.
     return false;
   }
 }
@@ -43,27 +46,23 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
     outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content and hash.'),
   },
   async ({ scriptContent }) => {
-    // This regex looks for curl/wget piping to a shell or being sourced.
-    // It's designed to be less greedy and capture common patterns.
-    const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[\w./-]+)/g;
-    const sourceRegex = /source\s+<(?:curl|wget)[^>]+>\s*([^)]*https?:\/\/[^\s'")]+)/g;
-
+    // This regex is specifically designed to find http/https URLs but avoid capturing ones with shell variables.
+    const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[^\s'"`${}()]+)/g;
+    
     const urls: string[] = [];
     let match;
 
     while ((match = urlRegex.exec(scriptContent)) !== null) {
       if (match[1]) {
-        urls.push(match[1].trim());
+        // We still run it through our validator for an extra layer of defense.
+        if (isValidUrl(match[1].trim())) {
+            urls.push(match[1].trim());
+        }
       }
     }
-     while ((match = sourceRegex.exec(scriptContent)) !== null) {
-      if (match[1]) {
-        urls.push(match[1].trim());
-      }
-    }
-
-    // Deduplicate and, most importantly, validate URLs before processing.
-    const uniqueUrls = [...new Set(urls)].filter(isValidUrl);
+    
+    // Deduplicate URLs before processing.
+    const uniqueUrls = [...new Set(urls)];
 
     const fetchedScripts = await Promise.all(
       uniqueUrls.map(async (url) => {
