@@ -147,15 +147,17 @@ export function ReportDisplay({ result, isLoading, error, analysisId }: ReportDi
             <h3 className="mb-2 text-lg font-semibold">Risk Score</h3>
             <RiskScoreIndicator score={result.riskScore} />
           </div>
-          <Separator />
           {result.summary && (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <MessageSquareQuote className="h-5 w-5 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">Summary</h3>
+            <>
+              <Separator />
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <MessageSquareQuote className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold">Summary</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">{result.summary}</p>
               </div>
-              <p className="text-sm text-muted-foreground">{result.summary}</p>
-            </div>
+            </>
           )}
           <Separator />
           <div>
