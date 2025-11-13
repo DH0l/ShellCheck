@@ -11,6 +11,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'zod';
 import {detectAndFetchRemoteScripts} from '../tools/detect-and-fetch-remote-scripts';
 import knownScripts from '../known-scripts.json';
+import { sha256 } from '@/lib/crypto';
 
 const AssessRiskAndProvideReportInputSchema = z.object({
   scriptContent: z.string().describe('The content of the shell script to be analyzed.'),
@@ -30,6 +31,7 @@ const BillOfMaterialsSchema = z.object({
 
 const AssessRiskAndProvideReportOutputSchema = z.object({
   riskScore: z.number().describe('A numerical score representing the overall risk level of the script (1-10).'),
+  summary: z.string().describe('A concise, one or two sentence summary of the overall risk and key findings.'),
   report: z.string().describe('A detailed report outlining the identified issues, their locations, and remediation suggestions.'),
   billOfMaterials: BillOfMaterialsSchema.describe('A bill of materials listing all detected remote scripts and external binaries.'),
 });
@@ -63,11 +65,12 @@ Your analysis MUST heavily factor in the verification status of these remote dep
 Based on ALL the information provided (the main script and the verification results), generate your analysis.
 
 Your response MUST be a single, valid JSON object that strictly adheres to the specified output schema.
-It must contain three top-level properties: 'riskScore', 'report', and 'billOfMaterials'.
+It must contain four top-level properties: 'riskScore', 'summary', 'report', and 'billOfMaterials'.
 
 1.  **riskScore**: Assign a numerical score from 1-10 representing the overall risk.
-2.  **report**: Provide a detailed markdown-formatted string. Describe each identified issue, its location, why it's a risk (especially in the context of unverified scripts), and concrete remediation suggestions.
-3.  **billOfMaterials**: Analyze the script to identify any external binaries that are downloaded and executed. Populate the \`externalBinaries\` array with these findings. You do not need to modify the \`remoteScripts\` array; it is provided for your context. The final JSON output should include the original \`remoteScripts\` data alongside your findings for \`externalBinaries\`.
+2.  **summary**: Provide a concise, one or two sentence summary of the overall risk and key findings. This should be a high-level overview.
+3.  **report**: Provide a detailed markdown-formatted string. Describe each identified issue, its location, why it's a risk (especially in the context of unverified scripts), and concrete remediation suggestions.
+4.  **billOfMaterials**: Analyze the script to identify any external binaries that are downloaded and executed. Populate the \`externalBinaries\` array with these findings. You do not need to modify the \`remoteScripts\` array; it is provided for your context. The final JSON output should include the original \`remoteScripts\` data alongside your findings for \`externalBinaries\`.
 
 Main shell script content to analyze:
 \`\`\`shell
