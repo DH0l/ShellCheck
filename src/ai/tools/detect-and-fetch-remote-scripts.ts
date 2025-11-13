@@ -14,7 +14,16 @@ const FetchedScriptSchema = z.object({
   error: z.string().optional().describe('An error message if the script could not be fetched.'),
 });
 
+/**
+ * Checks if a given string is a structurally valid URL.
+ * @param str - The string to validate.
+ * @returns True if the string is a valid URL, false otherwise.
+ */
 function isValidUrl(str: string): boolean {
+  // Simple check to filter out URLs with shell variables.
+  if (str.includes('$') || str.includes('{') || str.includes('}')) {
+    return false;
+  }
   try {
     new URL(str);
     return true;
@@ -36,6 +45,7 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
   async ({ scriptContent }) => {
     // This regex looks for curl/wget piping to a shell or being sourced.
     // It's designed to be less greedy and capture common patterns.
+    // It specifically avoids shell variables like ${...} or $...
     const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[\w./-]+)/g;
     const sourceRegex = /source\s+<(?:curl|wget)[^>]+>\s*([^)]*https?:\/\/[^\s'")]+)/g;
 
