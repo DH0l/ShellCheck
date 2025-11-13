@@ -5,38 +5,56 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
+import { sha256 } from '@/lib/crypto';
 
 const FetchedScriptSchema = z.object({
   url: z.string().url().describe('The URL of the fetched script.'),
   content: z.string().optional().describe('The content of the script. Will be empty if fetching fails.'),
+  hash: z.string().optional().describe('The SHA-256 hash of the script content.'),
   error: z.string().optional().describe('An error message if the script could not be fetched.'),
 });
+
+function isValidUrl(str: string): boolean {
+  try {
+    new URL(str);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 export const detectAndFetchRemoteScripts = ai.defineTool(
   {
     name: 'detectAndFetchRemoteScripts',
     description:
-      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, wget ... | sh). It then fetches the content of these remote scripts.',
+      'Detects lines in a shell script that download and execute remote scripts (e.g., curl ... | bash, wget ... | sh). It then fetches the content of these remote scripts and computes their hash.',
     inputSchema: z.object({
       scriptContent: z.string().describe('The content of the primary shell script to analyze.'),
     }),
-    outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content.'),
+    outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content and hash.'),
   },
   async ({ scriptContent }) => {
-    // This regex looks for curl/wget piping to a shell.
-    const urlRegex = /(?:curl|wget)\s+[^|]+\s+(https?:\/\/[^\s'"`]+)/g;
+    // This regex looks for curl/wget piping to a shell or being sourced.
+    // It's designed to be less greedy and capture common patterns.
+    const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[\w./-]+)/g;
+    const sourceRegex = /source\s+<(?:curl|wget)[^>]+>\s*([^)]*https?:\/\/[^\s'")]+)/g;
 
     const urls: string[] = [];
     let match;
+
     while ((match = urlRegex.exec(scriptContent)) !== null) {
-      // The first capturing group should be the URL.
       if (match[1]) {
-        urls.push(match[1]);
+        urls.push(match[1].trim());
       }
     }
-    
-    // Deduplicate URLs
-    const uniqueUrls = [...new Set(urls)];
+     while ((match = sourceRegex.exec(scriptContent)) !== null) {
+      if (match[1]) {
+        urls.push(match[1].trim());
+      }
+    }
+
+    // Deduplicate and validate URLs
+    const uniqueUrls = [...new Set(urls)].filter(isValidUrl);
 
     const fetchedScripts = await Promise.all(
       uniqueUrls.map(async (url) => {
@@ -50,17 +68,18 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
           if (!response.ok) {
             return {
               url,
-              error: `Failed to fetch script from ${url}. Status: ${response.status} ${response.statusText}. This introduces a significant security risk as the script's content cannot be verified.`,
+              error: `Failed to fetch script from ${url}. Status: ${response.status} ${response.statusText}.`,
             };
           }
           const content = await response.text();
-          return { url, content };
+          const hash = await sha256(content);
+          return { url, content, hash };
         } catch (e: any) {
-          return { url, error: `An exception occurred while trying to fetch script from ${url}: ${e.message}. This could be due to a network issue, DNS problem, or the host being unreachable.` };
+          return { url, error: `An exception occurred while trying to fetch script from ${url}: ${e.message}.` };
         }
       })
     );
-    
+
     return fetchedScripts;
   }
 );

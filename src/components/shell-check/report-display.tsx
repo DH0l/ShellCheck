@@ -2,10 +2,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, FileCode2, Package, NotebookPen } from 'lucide-react';
+import { AlertTriangle, FileCode2, Package, NotebookPen, BadgeCheck } from 'lucide-react';
 import { FeedbackForm } from './feedback-form';
 import type { AssessRiskAndProvideReportOutput } from '@/ai/flows/assess-risk-and-provide-report';
 import { Separator } from '../ui/separator';
+import { Badge } from '../ui/badge';
 
 type ReportDisplayProps = {
   result: AssessRiskAndProvideReportOutput | null;
@@ -43,6 +44,12 @@ const BillOfMaterialsDisplay = ({ bom }: { bom: AssessRiskAndProvideReportOutput
   if (!hasRemoteScripts && !hasExternalBinaries) {
     return null;
   }
+  
+  const statusVariantMap = {
+    verified: 'default',
+    unverified: 'destructive',
+    error: 'destructive',
+  } as const;
 
   return (
     <div>
@@ -55,9 +62,20 @@ const BillOfMaterialsDisplay = ({ bom }: { bom: AssessRiskAndProvideReportOutput
               <CardTitle className="text-base font-semibold">Remote Scripts</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="list-inside list-disc space-y-1 text-sm">
+              <ul className="space-y-2 text-sm">
                 {bom.remoteScripts.map((script, index) => (
-                  <li key={index} className="break-all">{script}</li>
+                  <li key={index} className="flex flex-col">
+                     <div className="flex items-center gap-2">
+                      {script.status === 'verified' && <BadgeCheck className="h-4 w-4 text-green-500" />}
+                      <span className="break-all font-medium">{script.url}</span>
+                    </div>
+                    <Badge variant={statusVariantMap[script.status]} className="mt-1 w-fit">
+                      {script.status}
+                    </Badge>
+                     {script.details && (
+                      <p className="mt-1 text-xs text-muted-foreground">{script.details}</p>
+                    )}
+                  </li>
                 ))}
               </ul>
             </CardContent>

@@ -1,3 +1,7 @@
-{
-  "knownScripts": []
-}
+
+[
+  {
+    "url": "https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func",
+    "hash": "c558c35a646c05f77a53696a4336c53a158a743a183d69395669046487405c74"
+  }
+]
