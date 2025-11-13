@@ -15,12 +15,12 @@ const FetchedScriptSchema = z.object({
 });
 
 /**
- * Checks if a given string is a structurally valid URL.
+ * Checks if a given string is a structurally valid URL and doesn't contain shell variables.
  * @param str - The string to validate.
  * @returns True if the string is a valid URL, false otherwise.
  */
 function isValidUrl(str: string): boolean {
-  // Simple check to filter out URLs with shell variables.
+  // Simple but effective check to filter out strings containing shell variables.
   if (str.includes('$') || str.includes('{') || str.includes('}')) {
     return false;
   }
@@ -45,7 +45,6 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
   async ({ scriptContent }) => {
     // This regex looks for curl/wget piping to a shell or being sourced.
     // It's designed to be less greedy and capture common patterns.
-    // It specifically avoids shell variables like ${...} or $...
     const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[\w./-]+)/g;
     const sourceRegex = /source\s+<(?:curl|wget)[^>]+>\s*([^)]*https?:\/\/[^\s'")]+)/g;
 
@@ -63,7 +62,7 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
       }
     }
 
-    // Deduplicate and validate URLs
+    // Deduplicate and, most importantly, validate URLs before processing.
     const uniqueUrls = [...new Set(urls)].filter(isValidUrl);
 
     const fetchedScripts = await Promise.all(
