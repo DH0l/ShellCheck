@@ -15,22 +15,24 @@ const FetchedScriptSchema = z.object({
 });
 
 /**
- * Checks if a given string is a structurally valid URL and doesn't contain shell variables.
+ * Checks if a given string is a structurally valid URL for fetching, filtering out shell variables.
  * @param str - The string to validate.
  * @returns True if the string is a valid URL, false otherwise.
  */
 function isValidUrl(str: string): boolean {
-  // Filter out strings containing common shell variable patterns like $, {, or }.
-  if (/[${}]/.test(str)) {
+  // Primary defense: Immediately reject any string that contains common shell variable syntax.
+  // This is the most common source of invalid URLs in this context.
+  if (/\${|`|'|"|\(|\)/.test(str)) {
     return false;
   }
+  
+  // Use the standard URL constructor for robust parsing.
   try {
-    // Check if the URL can be parsed by the standard URL constructor.
     const parsedUrl = new URL(str);
-    // Ensure it's a http or https protocol.
+    // Ensure the protocol is one we can fetch (http or https).
     return ['http:', 'https:'].includes(parsedUrl.protocol);
   } catch (_) {
-    // If the URL constructor throws an error, it's not a valid URL.
+    // If the URL constructor throws an error, it's definitively not a valid URL.
     return false;
   }
 }
@@ -46,28 +48,25 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
     outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content and hash.'),
   },
   async ({ scriptContent }) => {
-    // Regex updated to be more specific and avoid capturing URLs with shell variables.
-    // It specifically looks for http/https URLs that are not part of a variable expansion.
+    // This regex is designed to capture URLs in common curl/wget patterns.
+    // It's intentionally broad to catch various formats. The strict validation happens next.
     const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[^\s'"`${}()]+)/g;
     
-    const urls: string[] = [];
+    const potentialUrls: string[] = [];
     let match;
 
     while ((match = urlRegex.exec(scriptContent)) !== null) {
       if (match[1]) {
-        const potentialUrl = match[1].trim();
-        // The isValidUrl function now provides a much stronger guarantee.
-        if (isValidUrl(potentialUrl)) {
-            urls.push(potentialUrl);
-        }
+        potentialUrls.push(match[1].trim());
       }
     }
     
-    // Deduplicate URLs before processing.
-    const uniqueUrls = [...new Set(urls)];
+    // The most critical step: Filter the list of potential URLs using our robust validator.
+    // Also, deduplicate the list to avoid fetching the same URL multiple times.
+    const uniqueValidUrls = [...new Set(potentialUrls.filter(isValidUrl))];
 
     const fetchedScripts = await Promise.all(
-      uniqueUrls.map(async (url) => {
+      uniqueValidUrls.map(async (url) => {
         try {
           const response = await fetch(url, {
             headers: {
