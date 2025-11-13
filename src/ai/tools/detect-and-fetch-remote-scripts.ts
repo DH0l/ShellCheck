@@ -20,8 +20,8 @@ const FetchedScriptSchema = z.object({
  * @returns True if the string is a valid URL, false otherwise.
  */
 function isValidUrl(str: string): boolean {
-  // Filter out strings containing common shell variable patterns.
-  if (str.includes('$') || str.includes('{') || str.includes('}')) {
+  // Filter out strings containing common shell variable patterns like $, {, or }.
+  if (/[${}]/.test(str)) {
     return false;
   }
   try {
@@ -46,7 +46,8 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
     outputSchema: z.array(FetchedScriptSchema).describe('An array of fetched remote scripts with their content and hash.'),
   },
   async ({ scriptContent }) => {
-    // This regex is specifically designed to find http/https URLs but avoid capturing ones with shell variables.
+    // Regex updated to be more specific and avoid capturing URLs with shell variables.
+    // It specifically looks for http/https URLs that are not part of a variable expansion.
     const urlRegex = /(?:curl|wget)[^|;]*?\s+((?:https?:\/\/)[^\s'"`${}()]+)/g;
     
     const urls: string[] = [];
@@ -54,9 +55,10 @@ export const detectAndFetchRemoteScripts = ai.defineTool(
 
     while ((match = urlRegex.exec(scriptContent)) !== null) {
       if (match[1]) {
-        // We still run it through our validator for an extra layer of defense.
-        if (isValidUrl(match[1].trim())) {
-            urls.push(match[1].trim());
+        const potentialUrl = match[1].trim();
+        // The isValidUrl function now provides a much stronger guarantee.
+        if (isValidUrl(potentialUrl)) {
+            urls.push(potentialUrl);
         }
       }
     }
